@@ -14,18 +14,12 @@ export default function MeditationGenerator() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  /* -------------------------------------------
-     Load voices (Chrome fix)
-  -------------------------------------------- */
   useEffect(() => {
     if ("speechSynthesis" in window) {
       setTimeout(() => window.speechSynthesis.getVoices(), 100);
     }
   }, []);
 
-  /* -------------------------------------------
-     Generate meditation
-  -------------------------------------------- */
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -57,9 +51,6 @@ export default function MeditationGenerator() {
     }
   };
 
-  /* -------------------------------------------
-     Audio controls
-  -------------------------------------------- */
   const handlePlay = () => {
     if (!script) return;
 
@@ -95,9 +86,6 @@ export default function MeditationGenerator() {
     setError("");
   };
 
-  /* -------------------------------------------
-     Animations
-  -------------------------------------------- */
   const card = {
     hidden: { opacity: 0, y: 24 },
     visible: { opacity: 1, y: 0 },
@@ -108,7 +96,6 @@ export default function MeditationGenerator() {
     <div className="max-w-xl mx-auto px-4">
       <AnimatePresence mode="wait">
         {!script ? (
-          /* ================= INPUT PHASE ================= */
           <motion.div
             key="input"
             variants={card}
@@ -121,7 +108,8 @@ export default function MeditationGenerator() {
             <h1 className="text-2xl font-semibold text-center mb-2">
               Guided Visualization
             </h1>
-            <p className="text-sm text-center text-gray-900 mb-6">
+
+            <p className="text-sm text-center text-black mb-6">
               Describe a goal, vision, or future self
             </p>
 
@@ -131,7 +119,7 @@ export default function MeditationGenerator() {
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="e.g. calm confidence, success, clarity..."
                 disabled={loading}
-                className="w-full h-32 rounded-xl bg-white/60 p-4 outline-none resize-none focus:ring-2 focus:ring-purple-400 disabled:opacity-50"
+                className="w-full h-32 rounded-xl bg-white/60 p-4 outline-none resize-none focus:ring-2 focus:ring-purple-400 disabled:opacity-50 text-black"
               />
 
               {error && (
@@ -143,19 +131,11 @@ export default function MeditationGenerator() {
                 disabled={loading || !goal.trim()}
                 className="w-full rounded-xl bg-purple-600 text-white py-3 font-medium hover:bg-purple-700 transition disabled:opacity-50"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Generating…
-                  </span>
-                ) : (
-                  "Generate Visualization"
-                )}
+                {loading ? "Generating…" : "Generate Visualization"}
               </button>
             </form>
           </motion.div>
         ) : (
-          /* ================= PLAYBACK PHASE ================= */
           <motion.div
             key="playback"
             variants={card}
@@ -168,7 +148,8 @@ export default function MeditationGenerator() {
             <h2 className="text-xl font-semibold text-center mb-4">
               Your Visualization
             </h2>
-<div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap text-gray-900">
+
+            <div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap text-black">
               {script}
             </div>
 
@@ -186,13 +167,13 @@ export default function MeditationGenerator() {
                 <div className="flex gap-3">
                   <button
                     onClick={handlePauseResume}
-                    className="flex-1 py-3 rounded-xl bg-yellow-500 text-white font-medium hover:bg-yellow-600 transition"
+                    className="flex-1 py-3 rounded-xl bg-yellow-500 text-white font-medium"
                   >
                     {isPaused ? "Resume" : "Pause"}
                   </button>
                   <button
                     onClick={handleStop}
-                    className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition"
+                    className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium"
                   >
                     Stop
                   </button>
@@ -201,17 +182,10 @@ export default function MeditationGenerator() {
 
               <button
                 onClick={resetAll}
-                className="w-full py-3 rounded-xl border border-gray-400 text-gray-700 font-medium hover:bg-gray-100 transition"
+                className="w-full py-3 rounded-xl border border-gray-400 text-black font-medium"
               >
                 Create New Visualization
               </button>
-
-              {isPlaying && (
-                <div className="flex items-center justify-center gap-2 text-sm text-green-700">
-                  <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
-                  {isPaused ? "Paused" : "Playing…"}
-                </div>
-              )}
             </div>
           </motion.div>
         )}
