@@ -121,7 +121,7 @@ export default function MeditationGenerator() {
             <h1 className="text-2xl font-semibold text-center mb-2">
               Guided Visualization
             </h1>
-            <p className="text-sm text-center text-gray-700 mb-6">
+            <p className="text-sm text-center text-gray-900 mb-6">
               Describe a goal, vision, or future self
             </p>
 
@@ -168,8 +168,7 @@ export default function MeditationGenerator() {
             <h2 className="text-xl font-semibold text-center mb-4">
               Your Visualization
             </h2>
-
-            <div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap">
+<div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap text-gray-900">
               {script}
             </div>
 
