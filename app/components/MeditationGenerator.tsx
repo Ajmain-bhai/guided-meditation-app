@@ -30,11 +30,15 @@ export default function MeditationGenerator() {
     setIsPaused(false);
     ttsManager.stop();
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal }),
+        signal: controller.signal,
       });
 
       const data: GenerateMeditationResponse = await res.json();
@@ -43,10 +47,20 @@ export default function MeditationGenerator() {
         throw new Error(data.error || "Failed to generate meditation");
       }
 
-      setScript(data.script || "");
+      const generatedScript = data.script || "";
+
+      // 👇 Android-safe render commit
+      setTimeout(() => {
+        setScript(generatedScript);
+      }, 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if ((err as any).name === "AbortError") {
+        setError("Generation took too long. Please try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
