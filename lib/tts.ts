@@ -50,8 +50,8 @@ export class TTSManager {
 
       this.utterance.onerror = (event) => {
         console.error('TTS Error event:', event);
-        if ((event as any).error) {
-          console.error('TTS Error message:', (event as any).error);
+        if (event.error) {
+          console.error('TTS Error message:', event.error);
         }
       };
 

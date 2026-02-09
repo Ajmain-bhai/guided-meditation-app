@@ -14,12 +14,6 @@ export default function MeditationGenerator() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  useEffect(() => {
-    if ("speechSynthesis" in window) {
-      setTimeout(() => window.speechSynthesis.getVoices(), 100);
-    }
-  }, []);
-
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -50,11 +44,12 @@ export default function MeditationGenerator() {
       const generatedScript = data.script || "";
 
       // 👇 Android-safe render commit
-      setTimeout(() => {
-        setScript(generatedScript);
-      }, 0);
-    } catch (err) {
-      if ((err as any).name === "AbortError") {
+      setScript(generatedScript);
+    requestAnimationFrame(() => {
+    setLoading(false);
+        });
+   } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
         setError("Generation took too long. Please try again.");
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -66,16 +61,22 @@ export default function MeditationGenerator() {
   };
 
   const handlePlay = () => {
-    if (!script) return;
+  if (!script) return;
 
-    setIsPlaying(true);
+  // Android-safe lazy init
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.getVoices();
+  }
+
+  setIsPlaying(true);
+  setIsPaused(false);
+
+  ttsManager.speak(script, () => {
+    setIsPlaying(false);
     setIsPaused(false);
+  });
+};
 
-    ttsManager.speak(script, () => {
-      setIsPlaying(false);
-      setIsPaused(false);
-    });
-  };
 
   const handlePauseResume = () => {
     if (isPaused) {
