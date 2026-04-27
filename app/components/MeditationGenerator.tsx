@@ -2,83 +2,66 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Script from "next/script";
-
-// Declare puter global type
-declare global {
-  interface Window {
-    puter: any;
-  }
-}
-
-const TTS_PROVIDERS = [
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    voices: [
-      { id: 'nova', name: 'Nova', description: 'Warm & calm' },
-      { id: 'shimmer', name: 'Shimmer', description: 'Soft & gentle' },
-      { id: 'alloy', name: 'Alloy', description: 'Neutral' },
-      { id: 'echo', name: 'Echo', description: 'Clear' },
-      { id: 'fable', name: 'Fable', description: 'Expressive' },
-      { id: 'onyx', name: 'Onyx', description: 'Deep' },
-    ],
-    models: [
-      { id: 'tts-1', name: 'Standard' },
-      { id: 'tts-1-hd', name: 'HD Quality' },
-    ]
-  },
-  {
-    id: 'elevenlabs',
-    name: 'ElevenLabs',
-    voices: [
-      { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', description: 'Calm female' },
-      { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', description: 'Calm male' },
-    ],
-    models: [
-      { id: 'eleven_multilingual_v2', name: 'Multilingual V2' },
-    ]
-  },
-];
 
 export default function MeditationGenerator() {
   const [goal, setGoal] = useState("");
   const [script, setScript] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [puterReady, setPuterReady] = useState(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Puter.js settings
-  const [selectedProvider, setSelectedProvider] = useState('openai');
-  const [selectedVoice, setSelectedVoice] = useState('nova');
-  const [selectedModel, setSelectedModel] = useState('tts-1');
+  // Browser TTS settings
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [speed, setSpeed] = useState(0.8);
+  const [pitch, setPitch] = useState(0.9);
   const [showSettings, setShowSettings] = useState(false);
 
-  const currentProvider = TTS_PROVIDERS.find(p => p.id === selectedProvider);
-  const currentAudioRef = { current: null as HTMLAudioElement | null };
+  const utteranceRef = { current: null as SpeechSynthesisUtterance | null };
+
+  // Load available voices
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+      
+      // Find best default voice for meditation
+      const preferredVoice = 
+        voices.find(v => v.name.toLowerCase().includes('samantha')) || // macOS
+        voices.find(v => v.name.toLowerCase().includes('zira')) || // Windows
+        voices.find(v => v.name.toLowerCase().includes('female') && v.lang.startsWith('en')) ||
+        voices.find(v => v.lang.startsWith('en-US')) ||
+        voices[0];
+      
+      setSelectedVoice(preferredVoice);
+    };
+
+    loadVoices();
+    
+    // Chrome loads voices asynchronously
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!puterReady || !window.puter) {
-      setError("Puter.js is still loading. Please wait a moment.");
-      return;
-    }
 
     setError("");
     setScript("");
     setLoading(true);
     setIsPlaying(false);
     setIsPaused(false);
-    
-    // Stop any playing audio
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
+    window.speechSynthesis.cancel();
 
     try {
       // Generate meditation script
@@ -97,64 +80,59 @@ export default function MeditationGenerator() {
     }
   };
 
-  const handlePlay = async () => {
-    if (!script || !puterReady || !window.puter) return;
+  const handlePlay = () => {
+    if (!script) return;
 
-    try {
+    // Android-safe lazy init
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(script);
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    
+    utterance.rate = speed;
+    utterance.pitch = pitch;
+    utterance.volume = 1.0;
+
+    utterance.onstart = () => {
       setIsPlaying(true);
       setIsPaused(false);
+    };
 
-      // Convert to speech using Puter.js
-      const audio = await window.puter.ai.txt2speech(script, {
-        provider: selectedProvider,
-        voice: selectedVoice,
-        model: selectedModel,
-      });
-
-      currentAudioRef.current = audio;
-      
-      audio.onended = () => {
-        setIsPlaying(false);
-        setIsPaused(false);
-      };
-      
-      audio.onpause = () => {
-        setIsPaused(true);
-      };
-      
-      audio.onplay = () => {
-        setIsPaused(false);
-      };
-      
-      // Auto-play
-      audio.play();
-
-    } catch (err) {
-      console.error('TTS Error:', err);
-      setError('Failed to generate audio. Please try again.');
+    utterance.onend = () => {
       setIsPlaying(false);
       setIsPaused(false);
-    }
+    };
+
+    utterance.onerror = (event) => {
+      console.error('Speech error:', event);
+      setError('Playback failed. Please try again.');
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
   };
 
   const handlePauseResume = () => {
-    if (!currentAudioRef.current) return;
-
     if (isPaused) {
-      currentAudioRef.current.play();
+      window.speechSynthesis.resume();
       setIsPaused(false);
     } else {
-      currentAudioRef.current.pause();
+      window.speechSynthesis.pause();
       setIsPaused(true);
     }
   };
 
   const handleStop = () => {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-      currentAudioRef.current = null;
-    }
+    window.speechSynthesis.cancel();
     setIsPlaying(false);
     setIsPaused(false);
   };
@@ -260,6 +238,14 @@ You have everything you need within you. Trust in your own inner wisdom and stre
     return `I am aligned with my intention for ${goal}.`;
   };
 
+  // Get friendly voice names
+  const getFriendlyVoiceName = (voice: SpeechSynthesisVoice): string => {
+    if (voice.name.includes('Samantha')) return '🌟 Samantha (Premium)';
+    if (voice.name.includes('Zira')) return '🌟 Zira (Recommended)';
+    if (voice.name.toLowerCase().includes('female')) return `👤 ${voice.name}`;
+    return voice.name;
+  };
+
   const card = {
     hidden: { opacity: 0, y: 24 },
     visible: { opacity: 1, y: 0 },
@@ -267,199 +253,185 @@ You have everything you need within you. Trust in your own inner wisdom and stre
   };
 
   return (
-    <>
-      {/* Load Puter.js */}
-      <Script 
-        src="https://js.puter.com/v2/" 
-        onLoad={() => setPuterReady(true)}
-      />
+    <div className="max-w-xl mx-auto px-4">
+      <AnimatePresence mode="wait">
+        {!script ? (
+          <motion.div
+            key="input"
+            variants={card}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={{ duration: 0.35 }}
+            className="backdrop-blur-xl bg-white/20 border border-white/30 rounded-2xl p-6 shadow-xl"
+          >
+            <h1 className="text-2xl font-semibold text-center mb-2">
+              Guided Visualization
+            </h1>
 
-      <div className="max-w-xl mx-auto px-4">
-        <AnimatePresence mode="wait">
-          {!script ? (
-            <motion.div
-              key="input"
-              variants={card}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              transition={{ duration: 0.35 }}
-              className="backdrop-blur-xl bg-white/20 border border-white/30 rounded-2xl p-6 shadow-xl"
-            >
-              <h1 className="text-2xl font-semibold text-center mb-2">
-                Guided Visualization
-              </h1>
+            <p className="text-sm text-center text-black mb-6">
+              Describe a goal, vision, or future self
+            </p>
 
-              <p className="text-sm text-center text-black mb-6">
-                Describe a goal, vision, or future self
-              </p>
+            <form onSubmit={handleGenerate} className="space-y-4">
+              <textarea
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                placeholder="e.g. calm confidence, success, clarity..."
+                disabled={loading}
+                className="w-full h-32 rounded-xl bg-white/60 p-4 outline-none resize-none focus:ring-2 focus:ring-purple-400 disabled:opacity-50 text-black"
+              />
 
-              <form onSubmit={handleGenerate} className="space-y-4">
-                <textarea
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="e.g. calm confidence, success, clarity..."
-                  disabled={loading || !puterReady}
-                  className="w-full h-32 rounded-xl bg-white/60 p-4 outline-none resize-none focus:ring-2 focus:ring-purple-400 disabled:opacity-50 text-black"
-                />
+              {/* Voice Settings Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowSettings(!showSettings)}
+                className="w-full text-sm text-black/70 hover:text-black transition flex items-center justify-center gap-2"
+              >
+                <span>🎙️ Voice Settings</span>
+                <span>{showSettings ? '▼' : '▶'}</span>
+              </button>
 
-                {/* Voice Settings Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="w-full text-sm text-black/70 hover:text-black transition flex items-center justify-center gap-2"
+              {/* Voice Settings Panel */}
+              {showSettings && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="space-y-3 pt-2"
                 >
-                  <span>🎙️ Voice Settings</span>
-                  <span>{showSettings ? '▼' : '▶'}</span>
-                </button>
-
-                {/* Voice Settings Panel */}
-                {showSettings && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="space-y-3 pt-2"
-                  >
-                    {/* Provider Selection */}
-                    <div>
-                      <label className="text-xs text-black/70 block mb-1">Provider</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {TTS_PROVIDERS.map((provider) => (
-                          <button
-                            key={provider.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedProvider(provider.id);
-                              setSelectedVoice(provider.voices[0].id);
-                              setSelectedModel(provider.models[0].id);
-                            }}
-                            className={`p-2 rounded-lg text-sm transition ${
-                              selectedProvider === provider.id
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-white/60 text-black hover:bg-white/80'
-                            }`}
-                          >
-                            {provider.name}
-                          </button>
+                  {/* Voice Selection */}
+                  <div>
+                    <label className="text-xs text-black/70 block mb-1">Voice</label>
+                    <select
+                      value={selectedVoice?.name || ''}
+                      onChange={(e) => {
+                        const voice = availableVoices.find(v => v.name === e.target.value);
+                        setSelectedVoice(voice || null);
+                      }}
+                      className="w-full rounded-lg bg-white/60 p-2 text-sm text-black outline-none focus:ring-2 focus:ring-purple-400"
+                    >
+                      {availableVoices
+                        .filter(v => v.lang.startsWith('en'))
+                        .map((voice) => (
+                          <option key={voice.name} value={voice.name}>
+                            {getFriendlyVoiceName(voice)}
+                          </option>
                         ))}
-                      </div>
-                    </div>
-
-                    {/* Voice Selection */}
-                    {currentProvider && (
-                      <div>
-                        <label className="text-xs text-black/70 block mb-1">Voice</label>
-                        <select
-                          value={selectedVoice}
-                          onChange={(e) => setSelectedVoice(e.target.value)}
-                          className="w-full rounded-lg bg-white/60 p-2 text-sm text-black outline-none focus:ring-2 focus:ring-purple-400"
-                        >
-                          {currentProvider.voices.map((voice) => (
-                            <option key={voice.id} value={voice.id}>
-                              {voice.name} - {voice.description}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Model Selection (OpenAI only) */}
-                    {selectedProvider === 'openai' && currentProvider && (
-                      <div>
-                        <label className="text-xs text-black/70 block mb-1">Quality</label>
-                        <select
-                          value={selectedModel}
-                          onChange={(e) => setSelectedModel(e.target.value)}
-                          className="w-full rounded-lg bg-white/60 p-2 text-sm text-black outline-none focus:ring-2 focus:ring-purple-400"
-                        >
-                          {currentProvider.models.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-
-                {error && (
-                  <p className="text-sm text-red-600">{error}</p>
-                )}
-
-                {!puterReady && (
-                  <p className="text-xs text-black/60 text-center">Loading voice engine...</p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading || !goal.trim() || !puterReady}
-                  className="w-full rounded-xl bg-purple-600 text-white py-3 font-medium hover:bg-purple-700 transition disabled:opacity-50"
-                >
-                  {!puterReady ? "Loading..." : loading ? "Generating…" : "Generate Visualization"}
-                </button>
-              </form>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="playback"
-              variants={card}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              transition={{ duration: 0.35 }}
-              className="backdrop-blur-xl bg-white/20 border border-white/30 rounded-2xl p-6 shadow-xl"
-            >
-              <h2 className="text-xl font-semibold text-center mb-4">
-                Your Visualization
-              </h2>
-
-              <div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap text-black">
-                {script}
-              </div>
-
-              <div className="space-y-3">
-                {!isPlaying && (
-                  <button
-                    onClick={handlePlay}
-                    className="w-full py-3 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition"
-                  >
-                    Play Visualization
-                  </button>
-                )}
-
-                {isPlaying && (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handlePauseResume}
-                      className="flex-1 py-3 rounded-xl bg-yellow-500 text-white font-medium"
-                    >
-                      {isPaused ? "Resume" : "Pause"}
-                    </button>
-                    <button
-                      onClick={handleStop}
-                      className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium"
-                    >
-                      Stop
-                    </button>
+                    </select>
                   </div>
-                )}
 
-                <button
-                  onClick={resetAll}
-                  className="w-full py-3 rounded-xl border border-gray-400 text-black font-medium"
-                >
-                  Create New Visualization
-                </button>
-              </div>
+                  {/* Speed Control */}
+                  <div>
+                    <label className="text-xs text-black/70 block mb-1">
+                      Speed: {speed.toFixed(1)}x (slower is calmer)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.0"
+                      step="0.1"
+                      value={speed}
+                      onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
 
-              <p className="text-xs text-center text-black/60 mt-4">
-                🎙️ Using {selectedProvider === 'openai' ? 'OpenAI' : 'ElevenLabs'} • {currentProvider?.voices.find(v => v.id === selectedVoice)?.name} voice
+                  {/* Pitch Control */}
+                  <div>
+                    <label className="text-xs text-black/70 block mb-1">
+                      Pitch: {pitch.toFixed(1)} (lower is soothing)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.5"
+                      step="0.1"
+                      value={pitch}
+                      onChange={(e) => setPitch(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </motion.div>
+              )}
+
+              {error && (
+                <p className="text-sm text-red-600">{error}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !goal.trim()}
+                className="w-full rounded-xl bg-purple-600 text-white py-3 font-medium hover:bg-purple-700 transition disabled:opacity-50"
+              >
+                {loading ? "Generating…" : "Generate Visualization"}
+              </button>
+
+              <p className="text-xs text-center text-black/60">
+                ✨ 100% Free • No Signup • Works Offline
               </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </>
+            </form>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="playback"
+            variants={card}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            transition={{ duration: 0.35 }}
+            className="backdrop-blur-xl bg-white/20 border border-white/30 rounded-2xl p-6 shadow-xl"
+          >
+            <h2 className="text-xl font-semibold text-center mb-4">
+              Your Visualization
+            </h2>
+
+            <div className="max-h-64 overflow-y-auto rounded-xl bg-white/60 p-4 text-sm leading-relaxed mb-6 whitespace-pre-wrap text-black">
+              {script}
+            </div>
+
+            <div className="space-y-3">
+              {!isPlaying && (
+                <button
+                  onClick={handlePlay}
+                  className="w-full py-3 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition"
+                >
+                  Play Visualization
+                </button>
+              )}
+
+              {isPlaying && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={handlePauseResume}
+                    className="flex-1 py-3 rounded-xl bg-yellow-500 text-white font-medium"
+                  >
+                    {isPaused ? "Resume" : "Pause"}
+                  </button>
+                  <button
+                    onClick={handleStop}
+                    className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium"
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={resetAll}
+                className="w-full py-3 rounded-xl border border-gray-400 text-black font-medium"
+              >
+                Create New Visualization
+              </button>
+            </div>
+
+            {selectedVoice && (
+              <p className="text-xs text-center text-black/60 mt-4">
+                🎙️ Using {selectedVoice.name} • {speed}x speed • Browser TTS
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
