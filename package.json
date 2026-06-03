@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-polly": "^3.1061.0",
+    "@heyputer/puter.js": "^2.2.15",
     "axios": "^1.15.0",
     "framer-motion": "^12.24.7",
     "groq-sdk": "^0.37.0",
