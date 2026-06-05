@@ -138,41 +138,97 @@ export default function MeditationGenerator() {
 
   // ── AWS Polly playback ───────────────────────────────────────────────────
   const handlePlayPolly = async () => {
-    if (!script) return;
-    setError("");
-    try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: script }),
-      });
-      if (!res.ok) throw new Error("Polly failed");
+  if (!script) return;
 
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
+  setError("");
 
-      if (audioRef.current) {
-        audioRef.current.pause();
+  try {
+    console.log("Calling AWS Polly...");
+
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: script,
+      }),
+    });
+
+    console.log("Polly Response Status:", res.status);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Polly API Error:", errorText);
+
+      throw new Error(
+        `AWS Polly request failed (${res.status})`
+      );
+    }
+
+    const blob = await res.blob();
+
+    console.log("Audio blob size:", blob.size);
+
+    if (blob.size === 0) {
+      throw new Error("Empty audio returned from Polly");
+    }
+
+    const audioUrl = URL.createObjectURL(blob);
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+
+      if (audioRef.current.src) {
         URL.revokeObjectURL(audioRef.current.src);
       }
-
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onplay  = () => { setIsPlaying(true);  setIsPaused(false); };
-      audio.onpause = () => { setIsPaused(true); };
-      audio.onended = () => { setIsPlaying(false); setIsPaused(false); };
-      audio.onerror = () => {
-        setError("Polly playback failed. Switching to browser TTS.");
-        setTtsMode("browser");
-        setIsPlaying(false);
-      };
-      await audio.play();
-      setTtsMode("polly");
-    } catch {
-      setTtsMode("browser");
-      handlePlayBrowser();
     }
-  };
+
+    const audio = new Audio(audioUrl);
+
+    audioRef.current = audio;
+
+    audio.onplay = () => {
+      console.log("Playing Polly audio");
+      setIsPlaying(true);
+      setIsPaused(false);
+      setTtsMode("polly");
+    };
+
+    audio.onpause = () => {
+      setIsPaused(true);
+    };
+
+    audio.onended = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+
+    audio.onerror = (event) => {
+      console.error("Audio playback error:", event);
+
+      setError(
+        "AWS Polly generated audio but playback failed."
+      );
+
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+
+    await audio.play();
+  } catch (err) {
+    console.error("POLLY ERROR:", err);
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "AWS Polly failed"
+    );
+
+    setIsPlaying(false);
+    setIsPaused(false);
+  }
+};
 
   // ── Browser TTS fallback ─────────────────────────────────────────────────
   const handlePlayBrowser = () => {
